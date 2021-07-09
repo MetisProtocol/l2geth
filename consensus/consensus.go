@@ -20,7 +20,7 @@ package consensus
 import (
 	"math/big"
 
-	"github.com/MetisProtocol/mvm/l2geth/common"
+	"github.com/MetisProtocol/l2geth/common"
 	"github.com/MetisProtocol/l2geth/core/state"
 	"github.com/MetisProtocol/l2geth/core/types"
 	"github.com/MetisProtocol/l2geth/params"

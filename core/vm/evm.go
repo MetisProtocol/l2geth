@@ -32,7 +32,7 @@ import (
 	"github.com/MetisProtocol/l2geth/crypto"
 	"github.com/MetisProtocol/l2geth/log"
 	"github.com/MetisProtocol/l2geth/params"
-	"github.com/MetisProtocol/l2geth"
+	"github.com/MetisProtocol/l2geth/rollup/dump"
 )
 
 // codec is a decoder for the return values of the execution manager. It decodes

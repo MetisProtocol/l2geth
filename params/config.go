@@ -23,7 +23,7 @@ import (
 
 	"github.com/MetisProtocol/l2geth/common"
 	"github.com/MetisProtocol/l2geth/crypto"
-	"github.com/MetisProtocol/l2geth"
+	"github.com/MetisProtocol/l2geth/rollup/dump"
 )
 
 // Genesis hashes to enforce below configs on.

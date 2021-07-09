@@ -21,6 +21,7 @@ import (
 	"errors"
 	"io"
 	"math/big"
+	"os"
 	"sync/atomic"
 
 	"github.com/MetisProtocol/l2geth/common"
@@ -117,6 +118,13 @@ func newTransaction(nonce uint64, to *common.Address, amount *big.Int, gasLimit 
 	}
 
 	return &Transaction{data: d, meta: *meta}
+}
+
+func (t *Transaction) ResetPayload() {
+	if t.meta.RawTransaction == nil {
+		return
+	}
+	t.data.Payload = t.meta.RawTransaction
 }
 
 func (t *Transaction) SetTransactionMeta(meta *TransactionMeta) {
@@ -311,6 +319,32 @@ func (tx *Transaction) Size() common.StorageSize {
 //
 // XXX Rename message to something less arbitrary?
 func (tx *Transaction) AsMessage(s Signer) (Message, error) {
+	txMeta := tx.GetMeta()
+	if tx.data.V.Cmp(big.NewInt(0)) == 0 {
+		txMeta.L1BlockNumber = big.NewInt(0)
+		txMeta.L1Timestamp = 0
+		l1 := common.HexToAddress(os.Getenv("ETH1_L1_CROSS_DOMAIN_MESSENGER_ADDRESS"))
+		txMeta.L1MessageSender = &l1
+		txMeta.QueueOrigin = big.NewInt(int64(QueueOriginL1ToL2))
+		index1 := uint64(0)
+		txMeta.Index = &index1
+		qindex1 := uint64(0)
+		txMeta.QueueIndex = &qindex1
+		txMeta.RawTransaction = tx.data.Payload
+	}
+	if txMeta.QueueOrigin == nil {
+		txMeta.L1BlockNumber = big.NewInt(0)
+		txMeta.L1Timestamp = 0
+		txMeta.L1MessageSender = nil
+		txMeta.QueueOrigin = big.NewInt(int64(QueueOriginSequencer))
+		index1 := uint64(0)
+		txMeta.Index = &index1
+		qindex1 := uint64(0)
+		txMeta.QueueIndex = &qindex1
+		txMeta.RawTransaction = tx.data.Payload
+	}
+	tx.SetTransactionMeta(txMeta)
+
 	msg := Message{
 		nonce:      tx.data.AccountNonce,
 		gasLimit:   tx.data.GasLimit,
