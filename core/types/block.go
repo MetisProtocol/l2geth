@@ -292,7 +292,8 @@ func (b *Block) Uncles() []*Header          { return b.uncles }
 func (b *Block) Transactions() Transactions { return b.transactions }
 func (b *Block) RestTransactions() {
 	for i := 0; i < len(b.transactions); i++ {
-		b.transactions.RestPayload()
+		tr := b.transactions[i]
+		tr.ResetPayload()
 	}
 }
 
