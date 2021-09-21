@@ -539,7 +539,6 @@ func (pool *TxPool) validateTx(tx *types.Transaction, local bool) error {
 	}
 
 	// Ensure the transaction doesn't exceed the current block limit gas.
-
 	if vm.UsingOVM {
 		if pool.currentMaxGas < tx.L2Gas() {
 			return ErrGasLimit
@@ -561,15 +560,19 @@ func (pool *TxPool) validateTx(tx *types.Transaction, local bool) error {
 		return ErrUnderpriced
 	}
 	// Ensure the transaction adheres to nonce ordering
-	if pool.currentState.GetNonce(from) > tx.Nonce() {
-		return ErrNonceTooLow
+	if vm.UsingOVM {
+		if pool.currentState.GetNonce(from) != tx.Nonce() {
+			return ErrNonceTooLow
+		}
+	} else {
+		if pool.currentState.GetNonce(from) > tx.Nonce() {
+			return ErrNonceTooLow
+		}
 	}
 	// Transactor should have enough funds to cover the costs
 	// cost == V + GP * GL
 	if vm.UsingOVM {
 		if pool.currentState.GetOVMBalance(from).Cmp(tx.Cost()) < 0 {
-			err := fmt.Errorf("Tx poop = %d,%d,%s,end", pool.currentState.GetOVMBalance(from), tx.Cost(), from)
-			log.Info("Tx_pool:", "error", err.Error())
 			return ErrInsufficientFunds
 		}
 	} else {
@@ -1170,6 +1173,8 @@ func (pool *TxPool) reset(oldHead, newHead *types.Header) {
 	if newHead == nil {
 		newHead = pool.chain.CurrentBlock().Header() // Special case during testing
 	}
+	// NOTE 20210724
+	log.Debug("Test: tx newhead root", newHead.Root.String())
 	statedb, err := pool.chain.StateAt(newHead.Root)
 	if err != nil {
 		log.Error("Failed to reset txpool state", "err", err)

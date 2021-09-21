@@ -27,7 +27,6 @@ import (
 	"github.com/MetisProtocol/l2geth/common"
 	"github.com/MetisProtocol/l2geth/core/types"
 	"github.com/MetisProtocol/l2geth/crypto"
-	"github.com/MetisProtocol/l2geth/diffdb"
 	"github.com/MetisProtocol/l2geth/log"
 	"github.com/MetisProtocol/l2geth/metrics"
 	"github.com/MetisProtocol/l2geth/rlp"
@@ -59,15 +58,6 @@ func (n *proofList) Delete(key []byte) error {
 	panic("not supported")
 }
 
-// DiffDb is a database for storing state diffs per block
-type DiffDB interface {
-	SetDiffKey(*big.Int, common.Address, common.Hash, bool) error
-	SetDiffAccount(*big.Int, common.Address) error
-	GetDiff(*big.Int) (diffdb.Diff, error)
-	Close() error
-	ForceCommit() error
-}
-
 // StateDBs within the ethereum protocol are used to store anything
 // within the merkle trie. StateDBs take care of caching and storing
 // nested states. It's the general query interface to retrieve:
@@ -76,8 +66,6 @@ type DiffDB interface {
 type StateDB struct {
 	db   Database
 	trie Trie
-
-	diffdb DiffDB
 
 	// This map holds 'live' objects, which will get modified while processing a state transition.
 	stateObjects        map[common.Address]*stateObject
@@ -136,34 +124,11 @@ func New(root common.Hash, db Database) (*StateDB, error) {
 	}, nil
 }
 
-func NewWithDiffDb(root common.Hash, db Database, diffdb DiffDB) (*StateDB, error) {
-	res, err := New(root, db)
-	if err != nil {
-		return nil, err
-	}
-	res.diffdb = diffdb
-	return res, nil
-}
-
 // setError remembers the first non-nil error it is called with.
 func (s *StateDB) setError(err error) {
 	if s.dbErr == nil {
 		s.dbErr = err
 	}
-}
-
-func (s *StateDB) SetDiffKey(block *big.Int, address common.Address, key common.Hash, mutated bool) error {
-	if s.diffdb == nil {
-		return errors.New("DiffDB not set")
-	}
-	return s.diffdb.SetDiffKey(block, address, key, mutated)
-}
-
-func (s *StateDB) SetDiffAccount(block *big.Int, address common.Address) error {
-	if s.diffdb == nil {
-		return errors.New("DiffDB not set")
-	}
-	return s.diffdb.SetDiffAccount(block, address)
 }
 
 func (s *StateDB) Error() error {
@@ -267,9 +232,14 @@ func (s *StateDB) GetBalance(addr common.Address) *big.Int {
 	return common.Big0
 }
 
+// UsingOVM
+// Read the account's balance from the state. This is used
+// because ETH is an ERC20. This function specifically looks
+// up the storage slot of the users balance. It is fragile to any
+// changes in storage layout.
 func (s *StateDB) GetOVMBalance(addr common.Address) *big.Int {
 	eth := common.HexToAddress("0x4200000000000000000000000000000000000006")
-	position := big.NewInt(5)
+	position := big.NewInt(0)
 	hasher := sha3.NewLegacyKeccak256()
 	hasher.Write(common.LeftPadBytes(addr.Bytes(), 32))
 	hasher.Write(common.LeftPadBytes(position.Bytes(), 32))

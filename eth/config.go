@@ -81,10 +81,7 @@ var DefaultConfig = Config{
 		// is additional overhead that is unaccounted. Round down to 127000 for
 		// safety.
 		MaxCallDataSize: 127000,
-		DataPrice:       big.NewInt(100 * params.GWei),
-		ExecutionPrice:  big.NewInt(0),
 	},
-	DiffDbCache: 256,
 }
 
 func init() {
@@ -141,7 +138,6 @@ type Config struct {
 	DatabaseHandles    int  `toml:"-"`
 	DatabaseCache      int
 	DatabaseFreezer    string
-	DiffDbCache        uint64
 
 	TrieCleanCache int
 	TrieDirtyCache int

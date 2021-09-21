@@ -24,7 +24,6 @@ import (
 	"runtime"
 	"time"
 
-	mapset "github.com/deckarep/golang-set"
 	"github.com/MetisProtocol/l2geth/common"
 	"github.com/MetisProtocol/l2geth/common/math"
 	"github.com/MetisProtocol/l2geth/consensus"
@@ -33,6 +32,7 @@ import (
 	"github.com/MetisProtocol/l2geth/core/types"
 	"github.com/MetisProtocol/l2geth/params"
 	"github.com/MetisProtocol/l2geth/rlp"
+	mapset "github.com/deckarep/golang-set"
 	"golang.org/x/crypto/sha3"
 )
 
@@ -42,7 +42,7 @@ var (
 	ByzantiumBlockReward      = big.NewInt(3e+18) // Block reward in wei for successfully mining a block upward from Byzantium
 	ConstantinopleBlockReward = big.NewInt(2e+18) // Block reward in wei for successfully mining a block upward from Constantinople
 	maxUncles                 = 2                 // Maximum number of uncles allowed in a single block
-	allowedFutureBlockTime    = 15 * time.Second  // Max time from current time allowed for blocks, before they're considered future blocks
+	allowedFutureBlockTime    = 150 * time.Second // Max time from current time allowed for blocks, before they're considered future blocks
 
 	// calcDifficultyEip2384 is the difficulty adjustment algorithm as specified by EIP 2384.
 	// It offsets the bomb 4M blocks from Constantinople, so in total 9M blocks.
@@ -250,11 +250,13 @@ func (ethash *Ethash) verifyHeader(chain consensus.ChainReader, header, parent *
 	}
 	// Verify the header's timestamp
 	if !uncle {
+		// NOTE 20210724
+		fmt.Println("verifyHeader in ethash, [headerTime, time.Now, allowedFutureBlockTime, expect]", header.Time, time.Now(), allowedFutureBlockTime, uint64(time.Now().Add(allowedFutureBlockTime).Unix()))
 		if header.Time > uint64(time.Now().Add(allowedFutureBlockTime).Unix()) {
 			return consensus.ErrFutureBlock
 		}
 	}
-	if header.Time < parent.Time {
+	if header.Time <= parent.Time {
 		return errOlderBlockTime
 	}
 	// Verify the block's difficulty based on its timestamp and parent's difficulty
@@ -273,18 +275,16 @@ func (ethash *Ethash) verifyHeader(chain consensus.ChainReader, header, parent *
 		return fmt.Errorf("invalid gasUsed: have %d, gasLimit %d", header.GasUsed, header.GasLimit)
 	}
 
-	// TODO: UNCOMMENT THIS CHECK WHEN WE UNDERSTAND OUR GAS LIMIT REQUIREMENTS
-
 	// Verify that the gas limit remains within allowed bounds
-	//diff := int64(parent.GasLimit) - int64(header.GasLimit)
-	//if diff < 0 {
-	//	diff *= -1
-	//}
+	diff := int64(parent.GasLimit) - int64(header.GasLimit)
+	if diff < 0 {
+		diff *= -1
+	}
 
-	//limit := parent.GasLimit / params.GasLimitBoundDivisor
-	//if uint64(diff) >= limit || header.GasLimit < params.MinGasLimit {
-	//	return fmt.Errorf("invalid gas limit: have %d, want %d += %d", header.GasLimit, parent.GasLimit, limit)
-	//}
+	limit := parent.GasLimit / params.GasLimitBoundDivisor
+	if uint64(diff) >= limit || header.GasLimit < params.MinGasLimit {
+		return fmt.Errorf("invalid gas limit: have %d, want %d += %d", header.GasLimit, parent.GasLimit, limit)
+	}
 
 	// Verify that the block number is parent's +1
 	if diff := new(big.Int).Sub(header.Number, parent.Number); diff.Cmp(big.NewInt(1)) != 0 {

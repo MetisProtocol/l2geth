@@ -2,9 +2,10 @@ package gasprice
 
 import (
 	"context"
-	"github.com/MetisProtocol/l2geth/log"
 	"math/big"
 	"sync"
+
+	"github.com/MetisProtocol/l2geth/log"
 )
 
 // RollupOracle holds the L1 and L2 gas prices for fee calculation
@@ -16,10 +17,12 @@ type RollupOracle struct {
 }
 
 // NewRollupOracle returns an initialized RollupOracle
-func NewRollupOracle(l1GasPrice *big.Int, l2GasPrice *big.Int) *RollupOracle {
+func NewRollupOracle() *RollupOracle {
 	return &RollupOracle{
-		l1GasPrice: l1GasPrice,
-		l2GasPrice: l2GasPrice,
+		l1GasPrice:     new(big.Int),
+		l2GasPrice:     new(big.Int),
+		l1GasPriceLock: sync.RWMutex{},
+		l2GasPriceLock: sync.RWMutex{},
 	}
 }
 

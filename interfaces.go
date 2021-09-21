@@ -120,10 +120,15 @@ type CallMsg struct {
 	Value    *big.Int        // amount of wei sent along with the call
 	Data     []byte          // input data, usually an ABI-encoded contract method invocation
 
-	L1MessageSender   *common.Address
-	L1BlockNumber     *big.Int
-	QueueOrigin       *big.Int
-	SignatureHashType types.SignatureHashType
+	L1Timestamp     uint64
+	L1BlockNumber   *big.Int
+	L1MessageSender *common.Address
+	QueueOrigin     types.QueueOrigin
+
+	// NOTE 20210724
+	// L1Timestamp uint64
+	// Index       *uint64
+	// QueueIndex  *uint64
 }
 
 // A ContractCaller provides contract calls, essentially transactions that are executed by

@@ -25,7 +25,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	mapset "github.com/deckarep/golang-set"
 	"github.com/MetisProtocol/l2geth/common"
 	"github.com/MetisProtocol/l2geth/consensus"
 	"github.com/MetisProtocol/l2geth/consensus/misc"
@@ -35,6 +34,7 @@ import (
 	"github.com/MetisProtocol/l2geth/event"
 	"github.com/MetisProtocol/l2geth/log"
 	"github.com/MetisProtocol/l2geth/params"
+	mapset "github.com/deckarep/golang-set"
 )
 
 const (
@@ -196,7 +196,7 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 		unconfirmed:        newUnconfirmedBlocks(eth.BlockChain(), miningLogAtDepth),
 		pendingTasks:       make(map[common.Hash]*task),
 		txsCh:              make(chan core.NewTxsEvent, txChanSize),
-		rollupCh:           make(chan core.NewTxsEvent, txChanSize),
+		rollupCh:           make(chan core.NewTxsEvent, 1),
 		chainHeadCh:        make(chan core.ChainHeadEvent, chainHeadChanSize),
 		chainSideCh:        make(chan core.ChainSideEvent, chainSideChanSize),
 		newWorkCh:          make(chan *newWorkReq),
@@ -352,8 +352,17 @@ func (w *worker) newWorkLoop(recommit time.Duration) {
 		select {
 		case <-w.startCh:
 			clearPending(w.chain.CurrentBlock().NumberU64())
-			timestamp = w.chain.CurrentTimestamp()
 			commit(false, commitInterruptNewHead)
+
+		// Remove this code for the OVM implementation. It is responsible for
+		// cleaning up memory with the call to `clearPending`, so be sure to
+		// call that in the new hot code path
+		/*
+			case <-w.chainHeadCh:
+				clearPending(head.Block.NumberU64())
+				timestamp = time.Now().Unix()
+				commit(false, commitInterruptNewHead)
+		*/
 
 		case <-timer.C:
 			// If mining is running resubmit a new work cycle periodically to pull in
@@ -364,7 +373,6 @@ func (w *worker) newWorkLoop(recommit time.Duration) {
 					timer.Reset(recommit)
 					continue
 				}
-				timestamp = w.chain.CurrentTimestamp()
 				commit(true, commitInterruptResubmit)
 			}
 
@@ -464,7 +472,18 @@ func (w *worker) mainLoop() {
 			}
 			tx := ev.Txs[0]
 			log.Debug("Attempting to commit rollup transaction", "hash", tx.Hash().Hex())
+			// Build the block with the tx and add it to the chain. This will
+			// send the block through the `taskCh` and then through the
+			// `resultCh` which ultimately adds the block to the blockchain
+			// through `bc.WriteBlockWithState`
 			if err := w.commitNewTx(tx); err == nil {
+				// `chainHeadCh` is written to when a new block is added to the
+				// tip of the chain. Reading from the channel will block until
+				// the ethereum block is added to the chain downstream of `commitNewTx`.
+				// This will result in a deadlock if we call `commitNewTx` with
+				// a transaction that cannot be added to the chain, so this
+				// should be updated to a select statement that can also listen
+				// for errors.
 				head := <-w.chainHeadCh
 				txs := head.Block.Transactions()
 				if len(txs) == 0 {
@@ -474,6 +493,18 @@ func (w *worker) mainLoop() {
 				txn := txs[0]
 				height := head.Block.Number().Uint64()
 				log.Debug("Miner got new head", "height", height, "block-hash", head.Block.Hash().Hex(), "tx-hash", txn.Hash().Hex(), "tx-hash", tx.Hash().Hex())
+
+				// Prevent memory leak by cleaning up pending tasks
+				// This is mostly copied from the `newWorkLoop`
+				// `clearPending` function and must be called
+				// periodically to clean up pending tasks. This
+				// function was originally called in `newWorkLoop`
+				// but the OVM implementation no longer uses that code path.
+				w.pendingMu.Lock()
+				for h := range w.pendingTasks {
+					delete(w.pendingTasks, h)
+				}
+				w.pendingMu.Unlock()
 			} else {
 				log.Debug("Problem committing transaction: %w", err)
 			}
@@ -510,7 +541,7 @@ func (w *worker) mainLoop() {
 				// If clique is running in dev mode(period is 0), disable
 				// advance sealing here.
 				if w.chainConfig.Clique != nil && w.chainConfig.Clique.Period == 0 {
-					w.commitNewWork(nil, true, w.chain.CurrentTimestamp())
+					w.commitNewWork(nil, true, time.Now().Unix())
 				}
 			}
 			atomic.AddInt32(&w.newTxs, int32(len(ev.Txs)))
@@ -621,6 +652,8 @@ func (w *worker) resultLoop() {
 				logs = append(logs, receipt.Logs...)
 			}
 			// Commit block and state to database.
+			block.RestTransactions()
+			fmt.Println("Test: resultLoop", block.Transactions()[0])
 			_, err := w.chain.WriteBlockWithState(block, receipts, logs, task.state, true)
 			if err != nil {
 				log.Error("Failed writing block to chain", "err", err)
@@ -869,7 +902,7 @@ func (w *worker) commitNewTx(tx *types.Transaction) error {
 	// transactions as the timestamp cannot be malleated
 	if parent.Time() > tx.L1Timestamp() {
 		log.Error("Monotonicity violation", "index", num)
-		if tx.QueueOrigin().Uint64() == uint64(types.QueueOriginSequencer) {
+		if tx.QueueOrigin() == types.QueueOriginSequencer {
 			tx.SetL1Timestamp(parent.Time())
 			prev := parent.Transactions()
 			if len(prev) == 1 {
@@ -895,7 +928,7 @@ func (w *worker) commitNewTx(tx *types.Transaction) error {
 	}
 	header := &types.Header{
 		ParentHash: parent.Hash(),
-		Number:     num.Add(num, common.Big1),
+		Number:     new(big.Int).Add(num, common.Big1),
 		GasLimit:   w.config.GasFloor,
 		Extra:      w.extra,
 		Time:       tx.L1Timestamp(),
@@ -915,7 +948,7 @@ func (w *worker) commitNewTx(tx *types.Transaction) error {
 	if w.commitTransactions(txs, w.coinbase, nil) {
 		return errors.New("Cannot commit transaction in miner")
 	}
-	return w.commit([]*types.Header{}, w.fullTaskHook, true, tstart)
+	return w.commit(nil, w.fullTaskHook, true, tstart)
 }
 
 // commitNewWork generates several new sealing tasks based on the parent block.
@@ -1053,6 +1086,8 @@ func (w *worker) commit(uncles []*types.Header, interval func(), update bool, st
 		if interval != nil {
 			interval()
 		}
+		// Writing to the taskCh will result in the block being added to the
+		// chain via the resultCh
 		select {
 		case w.taskCh <- &task{receipts: receipts, state: s, block: block, createdAt: time.Now()}:
 			w.unconfirmed.Shift(block.NumberU64() - 1)
@@ -1073,7 +1108,7 @@ func (w *worker) commit(uncles []*types.Header, interval func(), update bool, st
 				bn = new(big.Int)
 			}
 			log.Info("New block", "index", block.Number().Uint64()-uint64(1), "l1-timestamp", tx.L1Timestamp(), "l1-blocknumber", bn.Uint64(), "tx-hash", tx.Hash().Hex(),
-				"queue-orign", tx.QueueOrigin(), "type", tx.SignatureHashType(), "gas", block.GasUsed(), "fees", feesEth, "elapsed", common.PrettyDuration(time.Since(start)))
+				"queue-orign", tx.QueueOrigin(), "gas", block.GasUsed(), "fees", feesEth, "elapsed", common.PrettyDuration(time.Since(start)))
 
 		case <-w.exitCh:
 			log.Info("Worker has exited")

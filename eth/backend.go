@@ -22,12 +22,10 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
-	"path/filepath"
 	"runtime"
 	"sync"
 	"sync/atomic"
 
-	"github.com/MetisProtocol/l2geth/rollup"
 
 	"github.com/MetisProtocol/l2geth/accounts"
 	"github.com/MetisProtocol/l2geth/accounts/abi/bind"
@@ -54,6 +52,7 @@ import (
 	"github.com/MetisProtocol/l2geth/p2p/enr"
 	"github.com/MetisProtocol/l2geth/params"
 	"github.com/MetisProtocol/l2geth/rlp"
+	"github.com/MetisProtocol/l2geth/rollup"
 	"github.com/MetisProtocol/l2geth/rpc"
 )
 
@@ -190,9 +189,7 @@ func New(ctx *node.ServiceContext, config *Config) (*Ethereum, error) {
 		}
 	)
 
-	// Save the diffdb under chaindata/diffdb
-	diffdbPath := filepath.Join(ctx.ResolvePath("chaindata"), "diffdb")
-	eth.blockchain, err = core.NewBlockChainWithDiffDb(chainDb, cacheConfig, chainConfig, eth.engine, vmConfig, eth.shouldPreserve, diffdbPath, config.DiffDbCache)
+	eth.blockchain, err = core.NewBlockChain(chainDb, cacheConfig, chainConfig, eth.engine, vmConfig, eth.shouldPreserve)
 	if err != nil {
 		return nil, err
 	}
@@ -226,7 +223,7 @@ func New(ctx *node.ServiceContext, config *Config) (*Ethereum, error) {
 	eth.miner = miner.New(eth, &config.Miner, chainConfig, eth.EventMux(), eth.engine, eth.isLocalBlock)
 	eth.miner.SetExtra(makeExtraData(config.Miner.ExtraData))
 
-	log.Info("Backend Config", "max-calldata-size", config.Rollup.MaxCallDataSize, "gas-limit", config.Rollup.GasLimit, "is-verifier", config.Rollup.IsVerifier, "using-ovm", vm.UsingOVM, "data-price", config.Rollup.DataPrice, "execution-price", config.Rollup.ExecutionPrice)
+	log.Info("Backend Config", "max-calldata-size", config.Rollup.MaxCallDataSize, "gas-limit", config.Rollup.GasLimit, "is-verifier", config.Rollup.IsVerifier, "using-ovm", vm.UsingOVM)
 	eth.APIBackend = &EthAPIBackend{ctx.ExtRPCEnabled(), eth, nil, nil, config.Rollup.IsVerifier, config.Rollup.GasLimit, vm.UsingOVM, config.Rollup.MaxCallDataSize}
 	gpoParams := config.GPO
 	if gpoParams.Default == nil {
@@ -234,13 +231,23 @@ func New(ctx *node.ServiceContext, config *Config) (*Ethereum, error) {
 	}
 	eth.APIBackend.gpo = gasprice.NewOracle(eth.APIBackend, gpoParams)
 	// create the Rollup GPO and allow the API backend and the sync service to access it
-	rollupGpo := gasprice.NewRollupOracle(config.Rollup.DataPrice, config.Rollup.ExecutionPrice)
+	rollupGpo := gasprice.NewRollupOracle()
 	eth.APIBackend.rollupGpo = rollupGpo
 	eth.syncService.RollupGpo = rollupGpo
 	return eth, nil
 }
 
 func makeExtraData(extra []byte) []byte {
+	if vm.UsingOVM {
+		// Make the extradata deterministic
+		extra, _ = rlp.EncodeToBytes([]interface{}{
+			uint(params.VersionMajor<<16 | params.VersionMinor<<8 | params.VersionPatch),
+			"geth",
+			"go1.15.13",
+			"linux",
+		})
+		return extra
+	}
 	if len(extra) == 0 {
 		// create default extradata
 		extra, _ = rlp.EncodeToBytes([]interface{}{
@@ -545,12 +552,19 @@ func (s *Ethereum) Start(srvr *p2p.Server) error {
 
 	// Start the RPC service
 	s.netRPCService = ethapi.NewPublicNetAPI(srvr, s.NetVersion())
+
+	// Start Sync
+	maxPeers := srvr.MaxPeers
+	s.protocolManager.Start(maxPeers)
 	return nil
 }
 
 // Stop implements node.Service, terminating all internal goroutines used by the
 // Ethereum protocol.
 func (s *Ethereum) Stop() error {
+	// Stop all the peer-related stuff first.
+	s.protocolManager.Stop()
+
 	s.bloomIndexer.Close()
 	s.blockchain.Stop()
 	s.engine.Close()

@@ -1,5 +1,132 @@
 # Changelog
 
+## 0.4.14
+
+### Patch Changes
+
+- 0d429564: Add ROLLUP_ENABLE_ARBITRARY_CONTRACT_DEPLOYMENT_FLAG
+
+## 0.4.13
+
+### Patch Changes
+
+- dfe3598f: Lower per tx fee overhead to more accurately represent L1 costs
+
+## 0.4.12
+
+### Patch Changes
+
+- 0e14855c: Add in min accepted L2 gas limit config flag
+
+## 0.4.11
+
+### Patch Changes
+
+- f331428f: Update the memory usage in geth
+
+## 0.4.10
+
+### Patch Changes
+
+- eb1eb327: Ensure that L2 geth doesn't reject blocks from the future
+
+## 0.4.9
+
+### Patch Changes
+
+- 3c420ec3: Reduce the geth diff
+- 9d1ff999: Allow transactions via RPC to `address(0)`
+- 101b942c: Removes `id` field from EVM and no longer logs the EVM execution id
+- 4cf68ade: Style fix in the `RollupClient`
+- 6dbb9293: Remove dead code in `blockchain.go` and `miner/worker.go`
+
+## 0.4.8
+
+### Patch Changes
+
+- a8e37aac: Style fix to the ovm state manager precompile
+- 616b7a28: Small fixes to miner codepath
+- 7ee76c23: Remove an unnecessary use of `reflect` in l2geth
+- 75d8dcd3: Remove layer of indirection in `callStateManager`
+- f0a02385: Update the start script to work with the latest regenesis, `0.4.0`
+- 75ec2869: Return correct value in L2 Geth fee too high error message
+- 7acbab74: Delete stateobjects in the miner as blocks are produced to prevent a build up of memory
+- 0975f738: Remove diffdb
+- 8f9bb36f: Quick syntax fix in the sync service
+- 11d46182: Make the extradata deterministic for deterministic block hashes
+
+## 0.4.7
+
+### Patch Changes
+
+- bb7b916e: revert rpcGasCap logic to upstream geth behavior
+
+## 0.4.6
+
+### Patch Changes
+
+- 32a9f494: Give a better error message for when the fee is too high when sending transactions to the sequencer
+- 735ef774: Fix a bug in the fee logic that allowed for fees that were too low to get through
+
+## 0.4.5
+
+### Patch Changes
+
+- 53b37978: Fixes the flags to use float64 instead of bools for the `--rollup.feethresholddown` and `-rollup.feethresholdup` config options
+- 709c85d6: Prevents the sequencer from accepting transactions with a too high nonce
+
+## 0.4.4
+
+### Patch Changes
+
+- 0404c964: Allow zero gas price transactions from the `OVM_GasPriceOracle.owner` when enforce fees is set to true. This is to prevent the need to manage an additional hot wallet as well as prevent any situation where a bug causes the fees to go too high that it is not possible to lower the fee by sending a transaction
+- c612a903: Add sequencer fee buffer with config options `ROLLUP_FEE_THRESHOLD_UP` and `ROLLUP_FEE_THRESHOLD_DOWN` that are interpreted as floating point numbers
+
+## 0.4.3
+
+### Patch Changes
+
+- 6e2074c5: Update the `RollupClient` transaction type to use `hexutil.Big`
+
+## 0.4.2
+
+### Patch Changes
+
+- 7e04137d: Handle errors correctly in the RollupClient and retry in the SyncService when initially attempting to connect to the DTL
+
+## 0.4.1
+
+### Patch Changes
+
+- 40b99a6e: Add new RPC endpoint `rollup_gasPrices`
+
+## 0.4.0
+
+### Minor Changes
+
+- e04de624: Add support for ovmCALL with nonzero ETH value
+
+### Patch Changes
+
+- 01646a0a: Add new config `ROLLUP_GAS_PRICE_ORACLE_OWNER_ADDRESS` to set the owner of the gas price oracle at runtime
+- 8fee7bed: Add extra overflow protection for the DTL types
+- 5fc728da: Add a new Standard Token Bridge, to handle deposits and withdrawals of any ERC20 token.
+  For projects developing a custom bridge, if you were previously importing `iAbs_BaseCrossDomainMessenger`, you should now
+  import `iOVM_CrossDomainMessenger`.
+- 257deb70: Prevent overflows in abi encoding of ovm codec transaction from geth types.Transaction
+- 08873674: Update queueOrigin type
+- 01646a0a: Removes config options that are no longer required. `ROLLUP_DATAPRICE`, `ROLLUP_EXECUTION_PRICE`, `ROLLUP_GAS_PRICE_ORACLE_ADDRESS` and `ROLLUP_ENABLE_L2_GAS_POLLING`. The oracle was moved to a predeploy 0x42.. address and polling is always enabled as it no longer needs to be backwards compatible
+- 0a7f5a46: Removes the gas refund for unused gas in geth since it is instead managed in the smart contracts
+- e045f582: Adds new SequencerFeeVault contract to store generated fees
+- 25a5dbdd: Removes the SignatureHashType from l2geth as it is deprecated and no longer required.
+
+## 0.3.9
+
+### Patch Changes
+
+- f409ce75: Fixes an off-by-one error that would sometimes break replica syncing when stopping and restarting geth.
+- d9fd67d2: Correctly log 'end of OVM execution' message.
+
 ## 0.3.8
 
 ### Patch Changes
