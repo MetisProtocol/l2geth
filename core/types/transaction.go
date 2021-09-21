@@ -21,8 +21,8 @@ import (
 	"errors"
 	"io"
 	"math/big"
-	"sync/atomic"
 	"os"
+	"sync/atomic"
 
 	"github.com/MetisProtocol/l2geth/common"
 	"github.com/MetisProtocol/l2geth/common/hexutil"
@@ -131,6 +131,13 @@ func newTransaction(nonce uint64, to *common.Address, amount *big.Int, gasLimit 
 	}
 
 	return &Transaction{data: d, meta: *meta}
+}
+
+func (t *Transaction) ResetPayload() {
+	if t.meta.RawTransaction == nil {
+		return
+	}
+	t.data.Payload = t.meta.RawTransaction
 }
 
 func (t *Transaction) SetTransactionMeta(meta *TransactionMeta) {
@@ -371,7 +378,7 @@ func (tx *Transaction) AsMessage(s Signer) (Message, error) {
 	} else {
 		txMeta.L1BlockNumber = big.NewInt(0)
 		if &txMeta.L1Timestamp == nil {
-		 	txMeta.L1Timestamp = 0
+			txMeta.L1Timestamp = 0
 		}
 		// txMeta.L1MessageSender = nil
 		txMeta.QueueOrigin = QueueOriginSequencer
@@ -409,7 +416,7 @@ func (tx *Transaction) AsMessage(s Signer) (Message, error) {
 
 		l1MessageSender: tx.meta.L1MessageSender,
 		l1BlockNumber:   tx.meta.L1BlockNumber,
-		queueOrigin:       tx.meta.QueueOrigin,
+		queueOrigin:     tx.meta.QueueOrigin,
 
 		// NOTE 20210724
 		l1Timestamp: tx.meta.L1Timestamp,
@@ -604,18 +611,17 @@ type Message struct {
 
 func NewMessage(from common.Address, to *common.Address, nonce uint64, amount *big.Int, gasLimit uint64, gasPrice *big.Int, data []byte, checkNonce bool, l1MessageSender *common.Address, l1BlockNumber *big.Int, queueOrigin QueueOrigin) Message {
 	return Message{
-		from:       from,
-		to:         to,
-		nonce:      nonce,
-		amount:     amount,
-		gasLimit:   gasLimit,
-		gasPrice:   gasPrice,
-		data:       data,
-		checkNonce: checkNonce,
+		from:            from,
+		to:              to,
+		nonce:           nonce,
+		amount:          amount,
+		gasLimit:        gasLimit,
+		gasPrice:        gasPrice,
+		data:            data,
+		checkNonce:      checkNonce,
 		l1BlockNumber:   l1BlockNumber,
 		l1MessageSender: l1MessageSender,
 		queueOrigin:     queueOrigin,
-
 
 		// TODO 20200724
 		l1Timestamp: 0,
@@ -662,5 +668,6 @@ func (m Message) QueueOrigin() QueueOrigin         { return m.queueOrigin }
 
 // NOTE 20210724
 func (m Message) L1Timestamp() uint64 { return m.l1Timestamp }
+
 // func (m Message) Index() *uint64      { return m.index }
 // func (m Message) QueueIndex() *uint64 { return m.queueIndex }
