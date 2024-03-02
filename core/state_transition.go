@@ -181,7 +181,7 @@ func (st *StateTransition) buyGas() error {
 
 	st.initialGas = st.msg.Gas()
 	// Do not subtract the gas from the user balance when running OVM.
-	// This is handled in the Solidity contracts to enable to fraud proof
+	// This is handled in the Solidity contracts to enable fraud proof
 	if !vm.UsingOVM {
 		st.state.SubBalance(st.msg.From(), mgval)
 	}
